@@ -214,9 +214,15 @@ def reset_game():
 def show_menu(game_frame, options, selected):
     h = HEIGHT // 2 + 60
     for i, text in enumerate(options):
-        color = (0,255,0) if i == selected else (255,255,255)
-        cv2.putText(game_frame, text, (WIDTH//2-150, h + i*40), cv2.FONT_HERSHEY_PLAIN, 2, color, 2)
-
+        x1 = WIDTH//2-150
+        y1 = h + i*60
+        x2 = WIDTH//2+250
+        y2 = y1 + 50
+        color_fill = (40, 40, 40)  
+        color_border = (255,255,255) if i == selected else (255,255,255) 
+        cv2.rectangle(game_frame, (x1, y1), (x2, y2), color_fill, -1)
+        cv2.rectangle(game_frame, (x1, y1), (x2, y2), color_border, 2)
+        cv2.putText(game_frame, text, (x1+30, y1+35), cv2.FONT_HERSHEY_PLAIN, 2, (255,255,255), 2)
 def main():
     global enemies, enemy_direction, bullets, can_shoot, ship_x, score, game_over, level
     global jefe, jefe_bullets, player_hp, jefe_hp, shots_fired, shots_hit, accuracy
@@ -243,7 +249,11 @@ def main():
         if menu_active and event == cv2.EVENT_LBUTTONDOWN:
             h = HEIGHT // 2 + 60
             for i in range(len(menu_options)):
-                if WIDTH//2-150 <= x <= WIDTH//2+250 and h + i*40 - 30 <= y <= h + i*40 + 30:
+                x1 = WIDTH//2-150
+                y1 = h + i*60
+                x2 = WIDTH//2+250
+                y2 = y1 + 50
+                if x1 <= x <= x2 and y1 <= y <= y2:
                     menu_selected = i
                     if menu_options[menu_selected] in ["Intentar otra vez", "Jugar de nuevo"]:
                         reset_game()
@@ -481,9 +491,8 @@ def main():
             cv2.putText(game_frame, f"Jefe: {pattern_names[jefe_pattern]}", (WIDTH-200, 30), font, font_scale, (255,128,0), font_thickness)
 
         if game_over:
-            if game_over:
-                color = (0,255,0) if msg == "Victoria!" else (0,0,255)
-                cv2.putText(game_frame, msg, (WIDTH//2-150, HEIGHT//2), font, 2, color, 2)
+            color = (0,255,0) if msg == "Victoria!" else (0,0,255)
+            cv2.putText(game_frame, msg, (WIDTH//2-150, HEIGHT//2), font, 2, color, 2)
 
         if menu_active:
             show_menu(game_frame, menu_options, menu_selected)
