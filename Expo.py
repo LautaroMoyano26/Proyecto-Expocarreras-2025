@@ -2,9 +2,24 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import random
+import json
+import os
 
 # Parámetros de la ventana
 WIDTH, HEIGHT = 1080, 720
+
+# Estados del juego
+MENU_MAIN = 0
+MENU_NAME_INPUT = 1
+MENU_LEADERBOARD = 2
+GAME_PLAYING = 3
+GAME_OVER = 4
+
+# Variables globales del menú
+game_state = MENU_MAIN
+menu_selection = 0
+player_name = ""
+leaderboard_file = "leaderboard.json"
 
 # Parámetros de la nave
 SHIP_WIDTH, SHIP_HEIGHT = 60, 30
@@ -99,6 +114,115 @@ def overlay_image_alpha(img, img_overlay, x, y):
             img[y:y+h, x:x+w, c] = alpha * img_overlay[:, :, c] + (1 - alpha) * img[y:y+h, x:x+w, c]
     else:
         img[y:y+h, x:x+w] = img_overlay
+
+# Funciones del leaderboard
+def load_leaderboard():
+    try:
+        if os.path.exists(leaderboard_file):
+            with open(leaderboard_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except:
+        return []
+
+def save_leaderboard(leaderboard):
+    try:
+        with open(leaderboard_file, 'w', encoding='utf-8') as f:
+            json.dump(leaderboard, f, ensure_ascii=False, indent=2)
+    except:
+        pass
+
+def add_score_to_leaderboard(name, score):
+    leaderboard = load_leaderboard()
+    leaderboard.append({"name": name.strip(), "score": score})
+    leaderboard.sort(key=lambda x: x["score"], reverse=True)
+    leaderboard = leaderboard[:10]  # Top 10
+    save_leaderboard(leaderboard)
+    return leaderboard
+
+# Funciones de menús
+def draw_main_menu(frame):
+    frame[:] = fondo_img  # Usar el fondo de espacio
+    
+    # Overlay semi-transparente para mejorar legibilidad
+    overlay = np.zeros_like(frame)
+    overlay[:] = (0, 0, 0)
+    cv2.addWeighted(frame, 0.7, overlay, 0.3, 0, frame)
+    
+    # Título
+    title = "SPACE INVADERS"
+    cv2.putText(frame, title, (WIDTH//2-200, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,255), 3)
+    
+    # Opciones del menú
+    options = ["JUGAR", "LEADERBOARD", "SALIR"]
+    for i, option in enumerate(options):
+        color = (0,255,0) if i == menu_selection else (255,255,255)
+        y_pos = 300 + i * 80
+        cv2.putText(frame, option, (WIDTH//2-80, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1.5, color, 2)
+    
+    # Instrucciones
+    cv2.putText(frame, "Usa W/S para navegar, ENTER para seleccionar", 
+                (WIDTH//2-250, HEIGHT-50), cv2.FONT_HERSHEY_PLAIN, 1.5, (255,255,255), 1)
+
+def draw_name_input(frame):
+    frame[:] = fondo_img  # Usar el fondo de espacio
+    
+    # Overlay semi-transparente para mejorar legibilidad
+    overlay = np.zeros_like(frame)
+    overlay[:] = (0, 0, 0)
+    cv2.addWeighted(frame, 0.7, overlay, 0.3, 0, frame)
+    
+    # Título
+    cv2.putText(frame, "INGRESA TU NOMBRE", (WIDTH//2-200, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0,255,255), 2)
+    
+    # Campo de texto
+    cv2.rectangle(frame, (WIDTH//2-200, 300), (WIDTH//2+200, 360), (50, 50, 50), -1)
+    cv2.rectangle(frame, (WIDTH//2-200, 300), (WIDTH//2+200, 360), (255, 255, 255), 2)
+    
+    # Nombre actual
+    display_name = player_name + "_" if len(player_name) < 20 else player_name
+    cv2.putText(frame, display_name, (WIDTH//2-190, 340), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+    
+    # Instrucciones
+    cv2.putText(frame, "Escribe tu nombre y presiona ENTER", 
+                (WIDTH//2-200, 420), cv2.FONT_HERSHEY_PLAIN, 1.5, (255,255,255), 1)
+    cv2.putText(frame, "ESC para volver", 
+                (WIDTH//2-80, 480), cv2.FONT_HERSHEY_PLAIN, 1.5, (255,255,255), 1)
+
+def draw_leaderboard(frame):
+    frame[:] = fondo_img  # Usar el fondo de espacio
+    
+    # Overlay semi-transparente para mejorar legibilidad
+    overlay = np.zeros_like(frame)
+    overlay[:] = (0, 0, 0)
+    cv2.addWeighted(frame, 0.7, overlay, 0.3, 0, frame)
+    
+    # Título
+    cv2.putText(frame, "LEADERBOARD", (WIDTH//2-150, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,255), 3)
+    
+    leaderboard = load_leaderboard()
+    
+    if not leaderboard:
+        cv2.putText(frame, "No hay puntuaciones registradas", 
+                    (WIDTH//2-200, 300), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+    else:
+        # Headers
+        cv2.putText(frame, "POS  NOMBRE           PUNTOS", 
+                    (WIDTH//2-200, 150), cv2.FONT_HERSHEY_PLAIN, 1.5, (255,255,255), 2)
+        
+        for i, entry in enumerate(leaderboard):
+            y_pos = 190 + i * 30
+            pos = f"{i+1}."
+            name = entry["name"][:15]  # Limitar nombre
+            score_text = str(entry["score"])
+            
+            text = f"{pos:<4} {name:<15} {score_text:>6}"
+            color = (0,255,0) if i == 0 else (255,255,255)
+            cv2.putText(frame, text, (WIDTH//2-200, y_pos), cv2.FONT_HERSHEY_PLAIN, 1.5, color, 1)
+    
+    # Instrucciones
+    cv2.putText(frame, "Presiona ESC para volver", 
+                (WIDTH//2-150, HEIGHT-50), cv2.FONT_HERSHEY_PLAIN, 1.5, (255,255,255), 1)
 
 def crear_enemigos(level):
     enemies = []
@@ -200,6 +324,7 @@ def jefe_disparo_disperso(jefe):
 
 def reset_game():
     global level, score, player_hp, jefe_hp, enemies, bullets, jefe, jefe_bullets, enemy_bullets, enemy_direction
+    global shots_fired, shots_hit, accuracy, game_state
     level = 1
     score = 0
     player_hp = 5
@@ -210,24 +335,16 @@ def reset_game():
     jefe_bullets = []
     enemy_bullets = []
     enemy_direction = 1
+    shots_fired = 0
+    shots_hit = 0
+    accuracy = 0.0
+    game_state = GAME_PLAYING
 
-def show_menu(game_frame, options, selected):
-    h = HEIGHT // 2 + 60
-    for i, text in enumerate(options):
-        x1 = WIDTH//2-150
-        y1 = h + i*60
-        x2 = WIDTH//2+250
-        y2 = y1 + 50
-        color_fill = (40, 40, 40)  
-        color_border = (255,255,255) if i == selected else (255,255,255) 
-        cv2.rectangle(game_frame, (x1, y1), (x2, y2), color_fill, -1)
-        cv2.rectangle(game_frame, (x1, y1), (x2, y2), color_border, 2)
-        cv2.putText(game_frame, text, (x1+30, y1+35), cv2.FONT_HERSHEY_PLAIN, 2, (255,255,255), 2)
 def main():
     global enemies, enemy_direction, bullets, can_shoot, ship_x, score, game_over, level
     global jefe, jefe_bullets, player_hp, jefe_hp, shots_fired, shots_hit, accuracy
     global jefe_shoot_timer, jefe_pattern, jefe_pattern_timer, jefe_spiral_angle, enemy_bullets
-    global menu_selected, menu_active
+    global game_state, menu_selection, player_name
 
     cap = cv2.VideoCapture(0)
     mp_hands = mp.solutions.hands
@@ -238,67 +355,52 @@ def main():
     font_scale = 1.2
     font_thickness = 2
 
-    menu_active = False
-    menu_options = []
-    menu_selected = 0
-    msg = ""
-
-    # Mouse callback para el menú
-    def mouse_callback(event, x, y, flags, param):
-        global menu_selected, menu_active, game_over, shots_fired, shots_hit, accuracy
-        if menu_active and event == cv2.EVENT_LBUTTONDOWN:
-            h = HEIGHT // 2 + 60
-            for i in range(len(menu_options)):
-                x1 = WIDTH//2-150
-                y1 = h + i*60
-                x2 = WIDTH//2+250
-                y2 = y1 + 50
-                if x1 <= x <= x2 and y1 <= y <= y2:
-                    menu_selected = i
-                    if menu_options[menu_selected] in ["Intentar otra vez", "Jugar de nuevo"]:
-                        reset_game()
-                        game_over = False
-                        menu_active = False
-                        shots_fired = 0
-                        shots_hit = 0
-                        accuracy = 0.0
-                    elif menu_options[menu_selected] == "Salir":
-                        cv2.destroyAllWindows()
-                        exit()
-
     cv2.namedWindow('Space Invader')
-    cv2.setMouseCallback('Space Invader', mouse_callback)
+    camera_window_created = False
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        cam_frame = cv2.resize(frame, (400, 300))
-        cam_frame = cv2.flip(cam_frame, 1)
-        frame_rgb = cv2.cvtColor(cam_frame, cv2.COLOR_BGR2RGB)
-        results = hands.process(frame_rgb)
+            
+        # Solo procesar la cámara cuando estamos jugando
+        if game_state == GAME_PLAYING:
+            cam_frame = cv2.resize(frame, (400, 300))
+            cam_frame = cv2.flip(cam_frame, 1)
+            frame_rgb = cv2.cvtColor(cam_frame, cv2.COLOR_BGR2RGB)
+            results = hands.process(frame_rgb)
 
-        hand_state = "No detectada"
-        if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                mp_draw.draw_landmarks(cam_frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-                thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
-                pinky_tip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
-                dist = np.linalg.norm(np.array([thumb_tip.x, thumb_tip.y]) - np.array([pinky_tip.x, pinky_tip.y]))
-                palm_x = hand_landmarks.landmark[mp_hands.HandLandmark.WRIST].x
-                ship_x = max(0, min(WIDTH - SHIP_WIDTH, int(palm_x*WIDTH) - SHIP_WIDTH//2))
-                if dist > 0.3:
-                    hand_state = "Mano abierta"
-                    can_shoot = True
-                else:
-                    hand_state = "Mano cerrada"
-                    if can_shoot and not menu_active:
-                        bullets.append([ship_x + SHIP_WIDTH//2 - bullet_width//2, ship_y])
-                        shots_fired += 1
-                        can_shoot = False
+            hand_state = "No detectada"
+            if results.multi_hand_landmarks:
+                for hand_landmarks in results.multi_hand_landmarks:
+                    mp_draw.draw_landmarks(cam_frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                    thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
+                    pinky_tip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
+                    dist = np.linalg.norm(np.array([thumb_tip.x, thumb_tip.y]) - np.array([pinky_tip.x, pinky_tip.y]))
+                    palm_x = hand_landmarks.landmark[mp_hands.HandLandmark.WRIST].x
+                    ship_x = max(0, min(WIDTH - SHIP_WIDTH, int(palm_x*WIDTH) - SHIP_WIDTH//2))
+                    if dist > 0.3:
+                        hand_state = "Mano abierta"
+                        can_shoot = True
+                    else:
+                        hand_state = "Mano cerrada"
+                        if can_shoot:
+                            bullets.append([ship_x + SHIP_WIDTH//2 - bullet_width//2, ship_y])
+                            shots_fired += 1
+                            can_shoot = False
 
-        # --- PAUSA: Solo actualiza el juego si el menú NO está activo ---
-        if not menu_active:
+        # Crear frame del juego
+        game_frame = fondo_img.copy()
+
+        # Manejar diferentes estados del juego
+        if game_state == MENU_MAIN:
+            draw_main_menu(game_frame)
+        elif game_state == MENU_NAME_INPUT:
+            draw_name_input(game_frame)
+        elif game_state == MENU_LEADERBOARD:
+            draw_leaderboard(game_frame)
+        elif game_state == GAME_PLAYING:
+            # Lógica del juego (mover enemigos, balas, etc.)
             # Mover enemigos
             for e in enemies:
                 e['x'] += enemy_speed * enemy_direction
@@ -395,19 +497,17 @@ def main():
                     jefe_bullets = []
                     enemy_bullets = []
                     if level > max_level:
+                        # Victoria - agregar puntaje al leaderboard
+                        add_score_to_leaderboard(player_name, score)
+                        game_state = GAME_OVER
                         game_over = True
-                        msg = "Victoria!"
-                        menu_active = True
-                        menu_options = ["Jugar de nuevo", "Salir"]
-                        menu_selected = 0
                     else:
                         enemies = crear_enemigos(level)
                 elif player_hp <= 0:
+                    # Derrota - agregar puntaje al leaderboard
+                    add_score_to_leaderboard(player_name, score)
+                    game_state = GAME_OVER
                     game_over = True
-                    msg = "Derrota"
-                    menu_active = True
-                    menu_options = ["Intentar otra vez", "Salir"]
-                    menu_selected = 0
             else:
                 if not enemies:
                     level += 1
@@ -416,28 +516,25 @@ def main():
                         jefe_bullets = []
                         enemy_bullets = []
                     elif level > max_level:
+                        # Victoria - agregar puntaje al leaderboard
+                        add_score_to_leaderboard(player_name, score)
+                        game_state = GAME_OVER
                         game_over = True
-                        msg = "Victoria!"
-                        menu_active = True
-                        menu_options = ["Jugar de nuevo", "Salir"]
-                        menu_selected = 0
                     else:
                         enemies = crear_enemigos(level)
                 else:
                     for e in enemies:
                         if e['y'] + ENEMY_HEIGHT >= ship_y:
+                            # Derrota - agregar puntaje al leaderboard
+                            add_score_to_leaderboard(player_name, score)
+                            game_state = GAME_OVER
                             game_over = True
-                            msg = "Derrota"
-                            menu_active = True
-                            menu_options = ["Intentar otra vez", "Salir"]
-                            menu_selected = 0
                             break
-            if player_hp <= 0 and not game_over:
+            if player_hp <= 0 and game_state == GAME_PLAYING:
+                # Derrota - agregar puntaje al leaderboard
+                add_score_to_leaderboard(player_name, score)
+                game_state = GAME_OVER
                 game_over = True
-                msg = "Derrota"
-                menu_active = True
-                menu_options = ["Intentar otra vez", "Salir"]
-                menu_selected = 0
 
             # Disparo y movimiento del jefe
             if jefe:
@@ -467,58 +564,100 @@ def main():
                 if jefe['x'] <= 0 or jefe['x'] + ENEMY_WIDTH*2 >= WIDTH:
                     jefe['dir'] *= -1
 
-        # Dibujar frame
-        game_frame = fondo_img.copy()
-        draw_ship(game_frame, ship_x, ship_y)
-        draw_enemies(game_frame, enemies)
-        draw_bullets(game_frame, bullets)
-        draw_jefe(game_frame, jefe)
-        for b in jefe_bullets:
-            x = b[0]
-            y = b[1]
-            cv2.rectangle(game_frame, (int(x), int(y)), (int(x + bullet_width), int(y + bullet_height)), (255,0,0), -1)
-        draw_enemy_bullets(game_frame, enemy_bullets)
+            # Dibujar elementos del juego
+            draw_ship(game_frame, ship_x, ship_y)
+            draw_enemies(game_frame, enemies)
+            draw_bullets(game_frame, bullets)
+            draw_jefe(game_frame, jefe)
+            for b in jefe_bullets:
+                x = b[0]
+                y = b[1]
+                cv2.rectangle(game_frame, (int(x), int(y)), (int(x + bullet_width), int(y + bullet_height)), (255,0,0), -1)
+            draw_enemy_bullets(game_frame, enemy_bullets)
 
-        # HUD
-        cv2.putText(game_frame, f"Estado: {hand_state}", (10, 30), font, font_scale, (0,255,0), font_thickness)
-        cv2.putText(game_frame, f"Puntaje: {score}", (10, 60), font, font_scale, (255,255,0), font_thickness)
-        cv2.putText(game_frame, f"Nivel: {level}", (10, 90), font, font_scale, (255,0,255), font_thickness)
-        cv2.putText(game_frame, f"HP: {player_hp}", (10, 120), font, font_scale, (0,128,255), font_thickness)
-        cv2.putText(game_frame, f"Precision: {accuracy:.1f}%", (10, 150), font, font_scale, (255,255,255), font_thickness)
-        cv2.putText(game_frame, f"Disparos: {shots_hit}/{shots_fired}", (10, 180), font, font_scale, (128,255,128), font_thickness)
-        if jefe:
-            pattern_names = ["Normal","Espiral","Cruz","Disperso"]
-            cv2.putText(game_frame, f"Jefe: {pattern_names[jefe_pattern]}", (WIDTH-200, 30), font, font_scale, (255,128,0), font_thickness)
+            # HUD
+            cv2.putText(game_frame, f"Jugador: {player_name}", (10, 30), font, font_scale, (0,255,0), font_thickness)
+            cv2.putText(game_frame, f"Puntaje: {score}", (10, 60), font, font_scale, (255,255,0), font_thickness)
+            cv2.putText(game_frame, f"Nivel: {level}", (10, 90), font, font_scale, (255,0,255), font_thickness)
+            cv2.putText(game_frame, f"HP: {player_hp}", (10, 120), font, font_scale, (0,128,255), font_thickness)
+            cv2.putText(game_frame, f"Precision: {accuracy:.1f}%", (10, 150), font, font_scale, (255,255,255), font_thickness)
+            cv2.putText(game_frame, f"Disparos: {shots_hit}/{shots_fired}", (10, 180), font, font_scale, (128,255,128), font_thickness)
+            if jefe:
+                pattern_names = ["Normal","Espiral","Cruz","Disperso"]
+                cv2.putText(game_frame, f"Jefe: {pattern_names[jefe_pattern]}", (WIDTH-200, 30), font, font_scale, (255,128,0), font_thickness)
 
-        if game_over:
-            color = (0,255,0) if msg == "Victoria!" else (0,0,255)
-            cv2.putText(game_frame, msg, (WIDTH//2-150, HEIGHT//2), font, 2, color, 2)
+        elif game_state == GAME_OVER:
+            # Mostrar mensaje de fin de juego
+            if level > max_level:
+                cv2.putText(game_frame, "VICTORIA!", (WIDTH//2-150, HEIGHT//2-100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0), 3)
+            else:
+                cv2.putText(game_frame, "DERROTA", (WIDTH//2-150, HEIGHT//2-100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,255), 3)
+            
+            cv2.putText(game_frame, f"Puntaje Final: {score}", (WIDTH//2-150, HEIGHT//2-50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 2)
+            cv2.putText(game_frame, f"Jugador: {player_name}", (WIDTH//2-150, HEIGHT//2), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 2)
+            cv2.putText(game_frame, "Presiona ENTER para volver al menu", (WIDTH//2-200, HEIGHT//2+100), cv2.FONT_HERSHEY_PLAIN, 1.5, (255,255,255), 1)
 
-        if menu_active:
-            show_menu(game_frame, menu_options, menu_selected)
-
+        # Mostrar frame
         cv2.imshow('Space Invader', game_frame)
-        cv2.imshow('Camara', cam_frame)
-
-        key = cv2.waitKey(1)
-        if menu_active:
-            if key == 2490368:  # flecha arriba
-                menu_selected = (menu_selected - 1) % len(menu_options)
-            elif key == 2621440:  # flecha abajo
-                menu_selected = (menu_selected + 1) % len(menu_options)
-            elif key == 13:  # enter
-                if menu_options[menu_selected] in ["Intentar otra vez", "Jugar de nuevo"]:
-                    reset_game()
-                    game_over = False
-                    menu_active = False
-                    shots_fired = 0
-                    shots_hit = 0
-                    accuracy = 0.0
-                elif menu_options[menu_selected] == "Salir":
-                    break
+        
+        # Mostrar cámara solo cuando estamos jugando
+        if game_state == GAME_PLAYING:
+            cv2.imshow('Camara', cam_frame)
+            camera_window_created = True
         else:
-            if key == 27 or game_over:
-                break
+            # Ocultar ventana de cámara cuando no estamos jugando
+            if camera_window_created:
+                try:
+                    cv2.destroyWindow('Camara')
+                    camera_window_created = False
+                except:
+                    pass
+
+        # Manejar input del teclado
+        key = cv2.waitKey(1) & 0xFF
+        
+        if game_state == MENU_MAIN:
+            if key == ord('w') or key == ord('W'):
+                menu_selection = (menu_selection - 1) % 3
+            elif key == ord('s') or key == ord('S'):
+                menu_selection = (menu_selection + 1) % 3
+            elif key == 13:  # Enter
+                if menu_selection == 0:  # JUGAR
+                    player_name = ""
+                    game_state = MENU_NAME_INPUT
+                elif menu_selection == 1:  # LEADERBOARD
+                    game_state = MENU_LEADERBOARD
+                elif menu_selection == 2:  # SALIR
+                    break
+        
+        elif game_state == MENU_NAME_INPUT:
+            if key == 27:  # ESC
+                game_state = MENU_MAIN
+            elif key == 13:  # Enter
+                if player_name.strip():
+                    reset_game()
+            elif key == 8:  # Backspace
+                player_name = player_name[:-1]
+            elif 32 <= key <= 126 and len(player_name) < 20:  # Caracteres imprimibles
+                player_name += chr(key)
+        
+        elif game_state == MENU_LEADERBOARD:
+            if key == 27:  # ESC
+                game_state = MENU_MAIN
+        
+        elif game_state == GAME_OVER:
+            if key == 13:  # Enter
+                game_state = MENU_MAIN
+                game_over = False
+        
+        elif game_state == GAME_PLAYING:
+            if key == 27:  # ESC - Volver al menú principal
+                game_state = MENU_MAIN
+                game_over = False
+
+        # Salir completamente con ESC en el menú principal
+        if key == 27 and game_state == MENU_MAIN:
+            break
 
     cap.release()
     cv2.destroyAllWindows()
