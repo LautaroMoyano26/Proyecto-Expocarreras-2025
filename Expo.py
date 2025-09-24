@@ -70,15 +70,64 @@ can_shoot = True
 # Limite de balas del jefe
 MAX_JEFE_BULLETS = 30
 
-# Cargar sprites y redimensionar
-enemigo1_img = cv2.imread('enemigo1.png', cv2.IMREAD_UNCHANGED)
-enemigo1_img = cv2.resize(enemigo1_img, (ENEMY_WIDTH, ENEMY_HEIGHT), interpolation=cv2.INTER_AREA)
+# Cargar sprites base de enemigos (3 formas diferentes)
+enemigo_forma1 = cv2.imread('enemigo1.png', cv2.IMREAD_UNCHANGED)
+enemigo_forma1 = cv2.resize(enemigo_forma1, (ENEMY_WIDTH, ENEMY_HEIGHT), interpolation=cv2.INTER_AREA)
 
-enemigo2_img = cv2.imread('enemigo2.png', cv2.IMREAD_UNCHANGED)
-enemigo2_img = cv2.resize(enemigo2_img, (ENEMY_WIDTH, ENEMY_HEIGHT), interpolation=cv2.INTER_AREA)
+enemigo_forma2 = cv2.imread('enemigo2.png', cv2.IMREAD_UNCHANGED)
+enemigo_forma2 = cv2.resize(enemigo_forma2, (ENEMY_WIDTH, ENEMY_HEIGHT), interpolation=cv2.INTER_AREA)
 
-enemigo3_img = cv2.imread('enemigo3.png', cv2.IMREAD_UNCHANGED)
-enemigo3_img = cv2.resize(enemigo3_img, (ENEMY_WIDTH, ENEMY_HEIGHT), interpolation=cv2.INTER_AREA)
+enemigo_forma3 = cv2.imread('enemigo3.png', cv2.IMREAD_UNCHANGED)
+enemigo_forma3 = cv2.resize(enemigo_forma3, (ENEMY_WIDTH, ENEMY_HEIGHT), interpolation=cv2.INTER_AREA)
+
+# Función para cambiar color del enemigo según su HP
+def colorear_enemigo(img_base, hp):
+    """Cambia el color del enemigo según su HP"""
+    img_coloreada = img_base.copy()
+    
+    if img_base.shape[2] == 4:  # Si tiene canal alpha
+        # Obtener la máscara del canal alpha
+        alpha = img_base[:, :, 3]
+        mask = alpha > 0  # Píxeles no transparentes
+        
+        # Definir colores según HP (BGR format)
+        if hp == 3:  # Rojo
+            color = (0, 0, 255)
+        elif hp == 2:  # Naranja
+            color = (0, 165, 255)
+        else:  # Verde (hp == 1)
+            color = (0, 255, 0)
+        
+        # Aplicar el color solo a los píxeles no transparentes
+        img_coloreada[mask, 0] = color[0]  # B
+        img_coloreada[mask, 1] = color[1]  # G
+        img_coloreada[mask, 2] = color[2]  # R
+        # Mantener el canal alpha original
+        img_coloreada[:, :, 3] = img_base[:, :, 3]
+    else:  # Si no tiene canal alpha (BGR)
+        # Para imágenes sin transparencia, cambiar todo el color
+        if hp == 3:  # Rojo
+            img_coloreada[:, :] = [0, 0, 255]
+        elif hp == 2:  # Naranja
+            img_coloreada[:, :] = [0, 165, 255]
+        else:  # Verde (hp == 1)
+            img_coloreada[:, :] = [0, 255, 0]
+    
+    return img_coloreada
+
+def draw_enemies(frame, enemies):
+    for e in enemies:
+        # La forma cambia dinámicamente según el HP actual
+        if e['hp'] == 3:
+            forma_base = enemigo_forma3  # Forma más compleja para HP alto
+        elif e['hp'] == 2:
+            forma_base = enemigo_forma2  # Forma intermedia para HP medio
+        else:  # hp == 1
+            forma_base = enemigo_forma1  # Forma más simple para HP bajo
+        
+        # Aplicar el color según el HP actual
+        sprite = colorear_enemigo(forma_base, e['hp'])
+        overlay_image_alpha(frame, sprite, e['x'], e['y'])
 
 ovni_img = cv2.imread('ovni.png', cv2.IMREAD_UNCHANGED)
 ovni_img = cv2.resize(ovni_img, (ENEMY_WIDTH*2, ENEMY_HEIGHT*2), interpolation=cv2.INTER_AREA)
@@ -231,8 +280,7 @@ def crear_enemigos(level):
             for col in range(ENEMY_COLS):
                 x = 60 + col * (ENEMY_WIDTH + ENEMY_GAP)
                 y = 60 + row * (ENEMY_HEIGHT + ENEMY_GAP)
-                tipo = random.choice(['verde','naranja','rojo'])
-                hp = 3 if tipo == 'rojo' else 2 if tipo == 'naranja' else 1
+                hp = random.choice([1, 2, 3])  # HP aleatorio que determina forma inicial
                 enemies.append({'x':x, 'y':y, 'hp':hp})
     elif level == 2:
         center_x = WIDTH // 2
@@ -244,8 +292,7 @@ def crear_enemigos(level):
             for col in range(cols_in_row):
                 x = start_x + col * (ENEMY_WIDTH + ENEMY_GAP)
                 y = start_y + row * (ENEMY_HEIGHT + ENEMY_GAP)
-                tipo = random.choice(['verde','naranja','rojo'])
-                hp = 3 if tipo == 'rojo' else 2 if tipo == 'naranja' else 1
+                hp = random.choice([1, 2, 3])  # HP aleatorio que determina forma inicial
                 enemies.append({'x':x, 'y':y, 'hp':hp})
     else:
         center_x = WIDTH // 2
@@ -258,17 +305,11 @@ def crear_enemigos(level):
             y = int(center_y + radius * np.sin(angle)) - ENEMY_HEIGHT // 2
             x = max(0, min(WIDTH - ENEMY_WIDTH, x))
             y = max(60, min(HEIGHT // 2, y))
-            tipo = random.choice(['verde','naranja','rojo'])
-            hp = 3 if tipo == 'rojo' else 2 if tipo == 'naranja' else 1
+            hp = random.choice([1, 2, 3])  # HP aleatorio que determina forma inicial
             enemies.append({'x':x, 'y':y, 'hp':hp})
     return enemies
 
 enemies = crear_enemigos(level)
-
-def draw_enemies(frame, enemies):
-    for e in enemies:
-        sprite = enemigo3_img if e['hp']==3 else enemigo2_img if e['hp']==2 else enemigo1_img
-        overlay_image_alpha(frame, sprite, e['x'], e['y'])
 
 def draw_jefe(frame, jefe):
     if jefe:
@@ -419,9 +460,16 @@ def main():
                         enemy_bullets.append([e['x'] + ENEMY_WIDTH//2, e['y'] + ENEMY_HEIGHT])
 
             # Mover balas del jugador
+            new_bullets = []
             for b in bullets:
                 b[1] -= bullet_speed
-            bullets = [b for b in bullets if b[1] > 0]
+                # Verificar si la bala salió por la parte superior (disparo fallido)
+                if b[1] <= 0:
+                    # Restar 10 puntos por disparo fallido, pero no permitir puntaje negativo
+                    score = max(0, score - 10)
+                else:
+                    new_bullets.append(b)
+            bullets = new_bullets
 
             # Mover balas del jefe
             new_jefe_bullets = []
@@ -447,8 +495,15 @@ def main():
                 for e in enemies:
                     if (bullet[0] < e['x'] + ENEMY_WIDTH and bullet[0]+bullet_width > e['x'] and
                         bullet[1] < e['y'] + ENEMY_HEIGHT and bullet[1]+bullet_height > e['y']):
+                        # Otorgar puntos según el HP actual del enemigo antes del daño
+                        if e['hp'] == 3:
+                            score += 10  # Golpe a enemigo de 3 HP
+                        elif e['hp'] == 2:
+                            score += 15  # Golpe a enemigo de 2 HP
+                        elif e['hp'] == 1:
+                            score += 25  # Golpe final que destruye al enemigo de 1 HP
+                        
                         e['hp'] -= 1
-                        if e['hp'] == 0: score += 50
                         shots_hit += 1
                         hit = True
                         break
@@ -582,6 +637,8 @@ def main():
             cv2.putText(game_frame, f"HP: {player_hp}", (10, 120), font, font_scale, (0,128,255), font_thickness)
             cv2.putText(game_frame, f"Precision: {accuracy:.1f}%", (10, 150), font, font_scale, (255,255,255), font_thickness)
             cv2.putText(game_frame, f"Disparos: {shots_hit}/{shots_fired}", (10, 180), font, font_scale, (128,255,128), font_thickness)
+            cv2.putText(game_frame, "Disparo fallido: -10 pts", (10, 210), cv2.FONT_HERSHEY_PLAIN, 1, (255,128,128), 1)
+            cv2.putText(game_frame, "3HP:10pts | 2HP:15pts | 1HP:25pts", (10, 230), cv2.FONT_HERSHEY_PLAIN, 1, (200,200,255), 1)
             if jefe:
                 pattern_names = ["Normal","Espiral","Cruz","Disperso"]
                 cv2.putText(game_frame, f"Jefe: {pattern_names[jefe_pattern]}", (WIDTH-200, 30), font, font_scale, (255,128,0), font_thickness)
